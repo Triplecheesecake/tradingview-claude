@@ -8,6 +8,9 @@ client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK")
 
 def send_discord(message):
+    if not DISCORD_WEBHOOK:
+        print("ERROR: DISCORD_WEBHOOK env variable not set")
+        return
     requests.post(DISCORD_WEBHOOK, json={"content": message})
 
 @app.route("/webhook", methods=["POST"])
@@ -37,6 +40,13 @@ Keep it concise and formatted for easy reading.
     send_discord(f"**Trade Alert - {data.get('symbol', 'Unknown')}**\n{trade_setup}")
 
     return jsonify({"trade_setup": trade_setup})
+
+@app.route("/debug", methods=["GET"])
+def debug():
+    return jsonify({
+        "DISCORD_WEBHOOK_set": DISCORD_WEBHOOK is not None,
+        "ANTHROPIC_API_KEY_set": os.environ.get("ANTHROPIC_API_KEY") is not None
+    })
 
 @app.route("/", methods=["GET"])
 def home():
