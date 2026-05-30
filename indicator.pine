@@ -1,0 +1,51 @@
+//@version=6
+indicator("MES Best Strategy v4", overlay=true, max_bars_back=500)
+
+// === SESSION (9:30 AM - 1:30 PM ET) ===
+in_session = not na(time("15", "0930-1330", "America/New_York"))
+
+// === INDICATORS ===
+vwap    = ta.vwap(hlc3)
+ema20   = ta.ema(close, 20)
+ema50   = ta.ema(close, 50)
+ema200  = ta.ema(close, 200)
+rsi     = ta.rsi(close, 14)
+atr     = ta.atr(14)
+avg_vol = ta.sma(volume, 20)
+
+// === TREND FILTER ===
+uptrend = close > ema50 and ema20 > ema50 and close > ema200
+
+// === BULL MARKET FILTER ===
+spx_200   = request.security("SPX", "D", ta.ema(close, 200))
+spx_close = request.security("SPX", "D", close)
+bull_market = spx_close > spx_200
+
+// === LONG SIGNAL: VWAP pullback + W formation ===
+was_above_vwap = close[2] > vwap[2]
+touched_vwap   = low[1] <= vwap[1]
+closing_above  = close > vwap
+higher_low     = low > ta.lowest(low, 10) and low[1] <= vwap[1]
+rsi_bullish    = rsi > 50 and rsi < 72
+strong_vol     = volume > avg_vol * 1.5
+
+long_signal = was_above_vwap
+  and touched_vwap
+  and closing_above
+  and higher_low
+  and uptrend
+  and bull_market
+  and rsi_bullish
+  and strong_vol
+  and in_session
+
+// === PLOTS ===
+plot(vwap,   "VWAP",    color.new(color.purple, 0), 2)
+plot(ema20,  "EMA 20",  color.new(color.blue,   0), 1)
+plot(ema50,  "EMA 50",  color.new(color.orange, 0), 1)
+plot(ema200, "EMA 200", color.new(color.white,  0), 2)
+
+plotshape(long_signal, "LONG", shape.triangleup, location.belowbar, color.lime, size=size.large)
+
+// === ALERTS ===
+alertcondition(long_signal, "LONG Signal", '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","exchange":"{{exchange}}","interval":"{{interval}}","condition":"LONG - VWAP pullback W formation"}')
