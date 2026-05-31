@@ -26,6 +26,8 @@ asia_kz      = not na(time("15", "2000-0200", "America/New_York"))
 us_session   = not na(time("15", "0930-1330", "America/New_York"))
 dead_zone    = not na(time("15", "1500-2000", "America/New_York"))
 in_kz        = overnight_kz or asia_kz
+// Skip Wednesday - FOMC/Fed days, 14% win rate historically
+no_wednesday = dayofweek != dayofweek.wednesday
 
 // === LEVELS ===
 prev_day_low  = request.security(syminfo.tickerid, "D", low[1])
@@ -49,6 +51,7 @@ institutional_long = pdl_swept
   and in_kz
   and not news_day
   and not dead_zone
+  and no_wednesday
 
 // === SIGNAL 2: VWAP PULLBACK ===
 was_above_vwap = close[2] > vwap[2]
@@ -70,6 +73,7 @@ vwap_long = was_above_vwap
   and strong_bar
   and us_session
   and not news_day
+  and no_wednesday
 
 // === PLOTS ===
 plot(vwap,         "VWAP",         color.new(color.purple, 0), 2)

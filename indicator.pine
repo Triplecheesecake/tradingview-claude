@@ -1,8 +1,9 @@
 //@version=6
 indicator("MES Best Strategy v4", overlay=true, max_bars_back=500)
 
-// === SESSION (9:30 AM - 1:30 PM ET) ===
-in_session = not na(time("15", "0930-1330", "America/New_York"))
+// === SESSION (9:30 AM - 1:30 PM ET, skip Wednesday - FOMC/Fed days) ===
+in_session   = not na(time("15", "0930-1330", "America/New_York"))
+no_wednesday = dayofweek != dayofweek.wednesday
 
 // === INDICATORS ===
 vwap    = ta.vwap(hlc3)
@@ -38,6 +39,7 @@ long_signal = was_above_vwap
   and rsi_bullish
   and strong_vol
   and in_session
+  and no_wednesday
 
 // === PLOTS ===
 plot(vwap,   "VWAP",    color.new(color.purple, 0), 2)
