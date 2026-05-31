@@ -17,17 +17,18 @@ def send_discord(message):
 def webhook():
     data = request.json
 
-    prompt = f"""You are a professional futures trader. Analyze this TradingView alert data and give me a clear trade setup:
+    prompt = f"""You are a professional futures trader. Given this TradingView alert, return ONLY the following block — no extra text, no reasoning:
 
 Alert data: {data}
 
-Include:
-- Trade direction (Long/Short)
-- Entry price
-- Stop loss
-- Take profit targets (TP1, TP2, TP3)
-- Brief reasoning
-Keep it concise and formatted for easy reading.
+Format exactly like this:
+📈 LONG  (or 📉 SHORT)
+Entry: [price]
+SL: [price]
+TP1: [price]
+TP2: [price]
+TP3: [price]
+Mgmt: [one line — e.g. "Move SL to BE after TP1. Trail to TP2."]
 """
 
     message = client.messages.create(
