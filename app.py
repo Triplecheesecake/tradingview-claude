@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import anthropic
+import json
 import os
 import requests
 
@@ -15,7 +16,7 @@ def send_discord(message):
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.json
+    data = request.get_json(force=True, silent=True) or json.loads(request.get_data(as_text=True) or "{}")
 
     prompt = f"""You are a professional futures trader. Given this TradingView alert, return ONLY the following block — no extra text, no reasoning:
 
