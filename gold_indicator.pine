@@ -24,6 +24,7 @@ uptrend_1h   = ema20_1h > ema50_1h
 overnight_kz = not na(time("15", "0200-0900", "America/New_York"))
 asia_kz      = not na(time("15", "2000-0200", "America/New_York"))
 us_session   = not na(time("15", "0930-1330", "America/New_York"))
+open_window  = not na(time("15", "0900-1030", "America/New_York"))
 dead_zone    = not na(time("15", "1500-2000", "America/New_York"))
 in_kz        = overnight_kz or asia_kz
 // Skip Wednesday - FOMC/Fed days, 14% win rate historically
@@ -75,6 +76,24 @@ vwap_long = was_above_vwap
   and not news_day
   and no_wednesday
 
+// === SIGNAL 3: US OPEN SWEEP + EMA50/PDL RECLAIM ===
+// Catches today's pattern: gap down at open, institutions accumulate, reclaim EMA50 → short squeeze
+gold_ema50_daily = request.security(syminfo.tickerid, "D", ta.ema(close, 50))
+swept_open       = low < prev_day_low or low[1] < prev_day_low
+                   or low < gold_ema50_daily or low[1] < gold_ema50_daily
+reclaimed_open   = close > gold_ema50_daily and close > vwap
+
+open_sweep_long = swept_open
+  and reclaimed_open
+  and strong_bar
+  and momentum_up
+  and volume > avg_vol * 1.5
+  and rsi > 40 and rsi < 70
+  and gold_uptrend
+  and open_window
+  and not news_day
+  and no_wednesday
+
 // === PLOTS ===
 plot(vwap,         "VWAP",         color.new(color.purple, 0), 2)
 plot(ema20,        "EMA 20",       color.new(color.blue,   0), 1)
@@ -90,7 +109,9 @@ bgcolor(news_day     ? color.new(color.red,     85) : na, title="News Day")
 
 plotshape(institutional_long, "INSTITUTIONAL", shape.triangleup, location.belowbar, color.yellow, size=size.large)
 plotshape(vwap_long,          "VWAP PULLBACK", shape.triangleup, location.belowbar, color.lime,   size=size.normal)
+plotshape(open_sweep_long,    "OPEN SWEEP",    shape.triangleup, location.belowbar, color.orange, size=size.large)
 
 // === ALERTS ===
 alertcondition(institutional_long, "INSTITUTIONAL Long", '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","exchange":"{{exchange}}","interval":"{{interval}}","condition":"LONG - Gold institutional prev day low sweep"}')
 alertcondition(vwap_long,          "VWAP Long",          '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","exchange":"{{exchange}}","interval":"{{interval}}","condition":"LONG - Gold VWAP pullback W formation"}')
+alertcondition(open_sweep_long,    "Open Sweep Long",    '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","exchange":"{{exchange}}","interval":"{{interval}}","condition":"LONG - Gold US open sweep EMA50 reclaim"}')
