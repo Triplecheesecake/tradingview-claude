@@ -22,13 +22,8 @@ ndx_200     = request.security("NDX", "D", ta.ema(close, 200))
 ndx_close   = request.security("NDX", "D", close)
 bull_market = ndx_close > ndx_200
 
-// === DAILY LEVELS ===
-ema50_daily  = request.security(syminfo.tickerid, "D", ta.ema(close, 50))
-prev_day_low = request.security(syminfo.tickerid, "D", low[1])
-
 // === SESSIONS ===
 us_session   = not na(time("15", "0930-1330", "America/New_York"))
-open_window  = not na(time("15", "0900-1030", "America/New_York"))
 no_wednesday = dayofweek != dayofweek.wednesday
 news_day     = atr > atr_avg * 2.5
 
@@ -57,39 +52,16 @@ vwap_long = was_above_vwap
   and not news_day
   and no_wednesday
 
-// === SIGNAL 2: US OPEN SWEEP + EMA50 RECLAIM ===
-// Catches gap-down / liquidity sweep at open where institutions accumulate
-// longs then reverse hard through the 50-day EMA (short squeeze)
-swept_key_level = low < prev_day_low or low[1] < prev_day_low
-                  or low < ema50_daily or low[1] < ema50_daily
-reclaimed       = close > ema50_daily and close > vwap
-
-sweep_long = swept_key_level
-  and reclaimed
-  and strong_bar
-  and momentum_up
-  and volume > avg_vol * 1.5
-  and rsi > 40 and rsi < 70
-  and bull_market
-  and open_window
-  and not news_day
-  and no_wednesday
-
 // === PLOTS ===
-plot(vwap,         "VWAP",          color.new(color.purple, 0), 2)
-plot(ema20,        "EMA 20",        color.new(color.blue,   0), 1)
-plot(ema50,        "EMA 50",        color.new(color.orange, 0), 1)
-plot(ema200,       "EMA 200",       color.new(color.white,  0), 2)
-plot(ema50_daily,  "Daily EMA 50",  color.new(color.yellow, 0), 1, plot.style_linebr)
-plot(prev_day_low, "Prev Day Low",  color.new(color.green,  0), 1, plot.style_linebr)
+plot(vwap,   "VWAP",    color.new(color.purple, 0), 2)
+plot(ema20,  "EMA 20",  color.new(color.blue,   0), 1)
+plot(ema50,  "EMA 50",  color.new(color.orange, 0), 1)
+plot(ema200, "EMA 200", color.new(color.white,  0), 2)
 
-bgcolor(us_session  ? color.new(color.green, 92) : na, title="US Session")
-bgcolor(open_window ? color.new(color.blue,  88) : na, title="Open Window")
-bgcolor(news_day    ? color.new(color.red,   85) : na, title="News Day")
+bgcolor(us_session ? color.new(color.green, 92) : na, title="US Session")
+bgcolor(news_day   ? color.new(color.red,   85) : na, title="News Day")
 
-plotshape(sweep_long, "OPEN SWEEP",    shape.triangleup, location.belowbar, color.yellow, size=size.large)
-plotshape(vwap_long,  "VWAP PULLBACK", shape.triangleup, location.belowbar, color.lime,   size=size.normal)
+plotshape(vwap_long, "VWAP PULLBACK", shape.triangleup, location.belowbar, color.lime, size=size.normal)
 
 // === ALERTS ===
-alertcondition(vwap_long,  "VWAP Long",       '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","exchange":"{{exchange}}","interval":"{{interval}}","condition":"LONG - MNQ VWAP pullback W formation"}')
-alertcondition(sweep_long, "Open Sweep Long", '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","exchange":"{{exchange}}","interval":"{{interval}}","condition":"LONG - MNQ US open sweep EMA50 reclaim"}')
+alertcondition(vwap_long, "VWAP Long", '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","exchange":"{{exchange}}","interval":"{{interval}}","condition":"LONG - MNQ VWAP pullback W formation"}')
