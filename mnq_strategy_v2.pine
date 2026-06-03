@@ -1,0 +1,58 @@
+//@version=6
+strategy("MNQ - EMA Crossover v2", overlay=true, max_bars_back=500, initial_capital=50000, currency=currency.USD, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=0.62)
+
+// === INDICATORS ===
+vwap    = ta.vwap(hlc3)
+ema9    = ta.ema(close, 9)
+ema21   = ta.ema(close, 21)
+ema50   = ta.ema(close, 50)
+ema200  = ta.ema(close, 200)
+rsi     = ta.rsi(close, 14)
+atr     = ta.atr(14)
+atr_avg = ta.sma(atr, 50)
+avg_vol = ta.sma(volume, 20)
+
+// === BULL MARKET FILTER ===
+ndx_200     = request.security("NDX", "D", ta.ema(close, 200))
+ndx_close   = request.security("NDX", "D", close)
+bull_market = ndx_close > ndx_200
+
+// === SESSIONS ===
+us_session   = not na(time("15", "0930-1330", "America/New_York"))
+no_wednesday = dayofweek != dayofweek.wednesday
+news_day     = atr > atr_avg * 2.5
+
+// === SIGNAL: EMA 9/21 CROSSOVER ABOVE VWAP ===
+cross_up    = ta.crossover(ema9, ema21)
+above_vwap  = close > vwap
+ema_uptrend = ema21 > ema50
+
+long_signal = cross_up
+  and above_vwap
+  and ema_uptrend
+  and bull_market
+  and rsi > 45 and rsi < 72
+  and volume > avg_vol * 1.2
+  and us_session
+  and not news_day
+  and no_wednesday
+  and strategy.position_size == 0
+
+// === ENTRIES & EXITS ===
+if long_signal
+    stop_price = close - atr * 1.0
+    tp_price   = close + (close - stop_price) * 3.0
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Exit", "Long", stop=stop_price, limit=tp_price)
+
+// === PLOTS ===
+plot(vwap,   "VWAP",    color.new(color.purple, 0), 2)
+plot(ema9,   "EMA 9",   color.new(color.aqua,   0), 1)
+plot(ema21,  "EMA 21",  color.new(color.yellow, 0), 1)
+plot(ema50,  "EMA 50",  color.new(color.orange, 0), 1)
+plot(ema200, "EMA 200", color.new(color.white,  0), 2)
+
+bgcolor(us_session ? color.new(color.green, 92) : na, title="US Session")
+bgcolor(news_day   ? color.new(color.red,   85) : na, title="News Day")
+
+plotshape(long_signal, "LONG", shape.triangleup, location.belowbar, color.lime, size=size.normal)
