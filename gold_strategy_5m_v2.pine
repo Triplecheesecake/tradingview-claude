@@ -1,0 +1,64 @@
+//@version=6
+strategy("MGC Gold - 5min v2", overlay=true, max_bars_back=500, initial_capital=50000, currency=currency.USD, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=1.50)
+
+// === INDICATORS ===
+ema9    = ta.ema(close, 9)
+ema21   = ta.ema(close, 21)
+ema50   = ta.ema(close, 50)
+vwap    = ta.vwap(hlc3)
+rsi     = ta.rsi(close, 14)
+atr     = ta.atr(14)
+atr_avg = ta.sma(atr, 50)
+avg_vol = ta.sma(volume, 20)
+
+// === DAILY TREND ===
+gold_d_close = request.security(syminfo.tickerid, "D", close)
+gold_d_ema50 = request.security(syminfo.tickerid, "D", ta.ema(close, 50))
+gold_uptrend = gold_d_close > gold_d_ema50
+
+// === SESSIONS ===
+london    = not na(time("5", "0200-0900", "America/New_York"))
+us        = not na(time("5", "0930-1330", "America/New_York"))
+in_session = london or us
+no_wednesday = dayofweek != dayofweek.wednesday
+news_day     = atr > atr_avg * 2.5
+
+// === TREND STACK: all EMAs aligned bullish ===
+stack = ema9 > ema21 and ema21 > ema50 and close > vwap
+
+// === ENTRY: pullback to 21 EMA, close back above it ===
+// Price dips to touch the 21 EMA then closes above — entering the trend continuation
+touched_21  = low[1] <= ema21[1]
+reclaimed   = close > ema21
+bullish_bar = close > open
+
+long_signal = stack
+  and touched_21
+  and reclaimed
+  and bullish_bar
+  and gold_uptrend
+  and rsi > 45 and rsi < 72
+  and volume > avg_vol * 1.0
+  and in_session
+  and not news_day
+  and no_wednesday
+  and strategy.position_size == 0
+
+// === EXITS: 3:1 R:R, stop below 50 EMA ===
+if long_signal
+    sl = math.min(low, ema50) - atr * 0.25
+    tp = close + (close - sl) * 3.0
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Exit", "Long", stop=sl, limit=tp)
+
+// === PLOTS ===
+plot(ema9,  "EMA 9",  color.new(color.aqua,   0), 1)
+plot(ema21, "EMA 21", color.new(color.yellow, 0), 2)
+plot(ema50, "EMA 50", color.new(color.orange, 0), 1)
+plot(vwap,  "VWAP",   color.new(color.purple, 0), 2)
+
+bgcolor(london    ? color.new(color.blue,  92) : na, title="London")
+bgcolor(us        ? color.new(color.green, 92) : na, title="US Session")
+bgcolor(news_day  ? color.new(color.red,   85) : na, title="News Day")
+
+plotshape(long_signal, "LONG", shape.triangleup, location.belowbar, color.lime, size=size.small)
