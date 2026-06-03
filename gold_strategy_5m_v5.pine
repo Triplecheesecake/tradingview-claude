@@ -78,27 +78,22 @@ base_filters = in_session and not news_day and no_wednesday and no_thursday and 
 long_signal  = w_valid and bull_regime and vol_pressure and rsi > 45 and rsi < 74 and base_filters
 short_signal = m_valid and bear_regime and vol_pressure and rsi > 26 and rsi < 55 and base_filters
 
-// === ENTRIES & EXITS with CAPPED STOP (v5 key change) ===
-// Natural stop = W low / M high + ATR buffer
-// Cap: if natural stop is farther than 1.5x ATR from entry, skip the trade
-// This prevents oversized losses when W/M spans a large volatile range
-
+// === ENTRIES: FIXED ATR STOP (v5 key change) ===
+// W/M formation = direction signal only
+// Stop is ALWAYS 1.5x ATR from entry — consistent risk every trade
+// This prevents oversized losses from wide formations in volatile conditions
+// Target = 3:1 R:R on the fixed stop
 if long_signal
-    natural_sl = w_sl1 - atr * 0.5
-    risk       = close - natural_sl
-    // Only take the trade if the risk is within 1.5x ATR — skip wide formations
-    if risk <= atr * 1.5
-        tp = close + risk * 3.0
-        strategy.entry("W-Long", strategy.long)
-        strategy.exit("WL-X", "W-Long", stop=natural_sl, limit=tp)
+    sl = close - atr * 1.5
+    tp = close + atr * 4.5
+    strategy.entry("W-Long", strategy.long)
+    strategy.exit("WL-X", "W-Long", stop=sl, limit=tp)
 
 if short_signal
-    natural_sl = m_sh1 + atr * 0.5
-    risk       = natural_sl - close
-    if risk <= atr * 1.5
-        tp = close - risk * 3.0
-        strategy.entry("M-Short", strategy.short)
-        strategy.exit("MS-X", "M-Short", stop=natural_sl, limit=tp)
+    sl = close + atr * 1.5
+    tp = close - atr * 4.5
+    strategy.entry("M-Short", strategy.short)
+    strategy.exit("MS-X", "M-Short", stop=sl, limit=tp)
 
 // === PLOTS ===
 plot(ema5,  "EMA 5",  color.new(color.white,  0), 1)
