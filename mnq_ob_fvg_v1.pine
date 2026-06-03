@@ -1,0 +1,89 @@
+//@version=6
+strategy("MNQ - OB/FVG v1", overlay=true, max_bars_back=500, initial_capital=50000, currency=currency.USD, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=0.62)
+
+// === EMAs ===
+ema5   = ta.ema(close, 5)
+ema13  = ta.ema(close, 13)
+ema50  = ta.ema(close, 50)
+ema200 = ta.ema(close, 200)
+
+// === TREND (bullish when 5 > 13 > 50 > 200) ===
+bullish_trend = ema5 > ema13 and ema13 > ema50 and ema50 > ema200
+
+// === FAIR VALUE GAP (bullish FVG = gap between high[2] and low[0]) ===
+var float fvg_top    = na
+var float fvg_bot    = na
+var bool  fvg_active = false
+
+new_fvg = high[2] < low[0]
+
+if new_fvg
+    fvg_top    := low[0]
+    fvg_bot    := high[2]
+    fvg_active := true
+
+// Invalidate FVG if price closes below it
+if fvg_active and close < fvg_bot
+    fvg_active := false
+
+in_fvg = fvg_active and close >= fvg_bot and low <= fvg_top
+
+// === ORDER BLOCK (last bearish candle before bullish impulse) ===
+var float ob_high   = na
+var float ob_low    = na
+var bool  ob_active = false
+
+bearish_candle  = close[1] < open[1]
+bullish_impulse = close > high[1] and (close - open) > (high[1] - low[1]) * 0.5
+
+if bearish_candle and bullish_impulse
+    ob_high   := high[1]
+    ob_low    := low[1]
+    ob_active := true
+
+// Invalidate OB if price closes below it
+if ob_active and close < ob_low
+    ob_active := false
+
+in_ob = ob_active and close >= ob_low and close <= ob_high
+
+// === VOLUME ===
+avg_vol     = ta.sma(volume, 20)
+atr         = ta.atr(14)
+atr_avg     = ta.sma(atr, 50)
+vol_confirm = volume > avg_vol * 1.2
+
+// === SESSIONS ===
+morning      = not na(time("5", "0930-1130", "America/New_York"))
+afternoon    = not na(time("5", "1300-1500", "America/New_York"))
+in_session   = morning or afternoon
+no_wednesday = dayofweek != dayofweek.wednesday
+news_day     = atr > atr_avg * 2.5
+
+// === ENTRY ===
+long_signal = bullish_trend
+  and (in_fvg or in_ob)
+  and vol_confirm
+  and in_session
+  and not news_day
+  and no_wednesday
+  and strategy.position_size == 0
+
+if long_signal
+    stop_price = close - atr * 1.0
+    tp_price   = close + (close - stop_price) * 2.0
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Exit", "Long", stop=stop_price, limit=tp_price)
+
+// === PLOTS ===
+plot(ema5,   "EMA 5",   color.new(color.white,  0), 1)
+plot(ema13,  "EMA 13",  color.new(color.aqua,   0), 1)
+plot(ema50,  "EMA 50",  color.new(color.orange, 0), 1)
+plot(ema200, "EMA 200", color.new(color.gray,   0), 1)
+
+// Shade active OB and FVG zones
+bgcolor(in_ob  ? color.new(color.yellow, 88) : na, title="In OB")
+bgcolor(in_fvg ? color.new(color.blue,   88) : na, title="In FVG")
+bgcolor(news_day ? color.new(color.red,  85) : na, title="News Day")
+
+plotshape(long_signal, "LONG", shape.triangleup, location.belowbar, color.lime, size=size.small)
