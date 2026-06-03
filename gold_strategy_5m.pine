@@ -1,0 +1,98 @@
+//@version=6
+strategy("MGC Gold - 5min Strategy v1", overlay=true, max_bars_back=500, initial_capital=50000, currency=currency.USD, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=1.50)
+
+// === INDICATORS ===
+vwap    = ta.vwap(hlc3)
+ema9    = ta.ema(close, 9)
+ema21   = ta.ema(close, 21)
+ema50   = ta.ema(close, 50)
+rsi     = ta.rsi(close, 14)
+atr     = ta.atr(14)
+atr_avg = ta.sma(atr, 50)
+avg_vol = ta.sma(volume, 20)
+
+// === DAILY TREND ===
+gold_d_close = request.security(syminfo.tickerid, "D", close)
+gold_d_ema50 = request.security(syminfo.tickerid, "D", ta.ema(close, 50))
+gold_uptrend = gold_d_close > gold_d_ema50
+prev_day_low = request.security(syminfo.tickerid, "D", low[1])
+
+// === SESSIONS ===
+london_kz    = not na(time("5", "0200-0900", "America/New_York"))
+us_session   = not na(time("5", "0930-1330", "America/New_York"))
+in_session   = london_kz or us_session
+no_wednesday = dayofweek != dayofweek.wednesday
+news_day     = atr > atr_avg * 2.5
+
+// === SHARED ===
+ema_uptrend = ema9 > ema21 and ema21 > ema50
+above_vwap  = close > vwap
+strong_bar  = (close - open) > (high - low) * 0.4
+no_position = strategy.position_size == 0
+
+// === SIGNAL 1: VWAP BOUNCE ===
+vwap_bounce = low[1] <= vwap[1]
+  and close > vwap
+  and ema_uptrend
+  and gold_uptrend
+  and rsi > 45 and rsi < 74
+  and volume > avg_vol * 1.0
+  and us_session
+  and not news_day
+  and no_wednesday
+  and no_position
+
+// === SIGNAL 2: INSTITUTIONAL (London) ===
+institutional = (low < prev_day_low or low[1] < prev_day_low)
+  and close > prev_day_low and close > vwap
+  and strong_bar
+  and ema_uptrend
+  and gold_uptrend
+  and rsi > 40 and rsi < 75
+  and volume > avg_vol * 1.0
+  and london_kz
+  and not news_day
+  and no_wednesday
+  and no_position
+
+// === SIGNAL 3: EMA CROSS ===
+ema_signal = ta.crossover(ema9, ema21)
+  and above_vwap
+  and gold_uptrend
+  and rsi > 45 and rsi < 72
+  and volume > avg_vol * 1.0
+  and in_session
+  and not news_day
+  and no_wednesday
+  and no_position
+
+// === ENTRIES & EXITS (2:1 R:R, ATR stop) ===
+if vwap_bounce
+    sl = close - atr * 1.0
+    strategy.entry("VWAP", strategy.long)
+    strategy.exit("VWAP X", "VWAP", stop=sl, limit=close + (close - sl) * 2.0)
+
+if institutional
+    sl = close - atr * 1.0
+    strategy.entry("INST", strategy.long)
+    strategy.exit("INST X", "INST", stop=sl, limit=close + (close - sl) * 2.0)
+
+if ema_signal
+    sl = close - atr * 1.0
+    strategy.entry("EMA", strategy.long)
+    strategy.exit("EMA X", "EMA", stop=sl, limit=close + (close - sl) * 2.0)
+
+// === PLOTS ===
+plot(vwap,         "VWAP",         color.new(color.purple, 0), 2)
+plot(ema9,         "EMA 9",        color.new(color.aqua,   0), 1)
+plot(ema21,        "EMA 21",       color.new(color.yellow, 0), 1)
+plot(ema50,        "EMA 50",       color.new(color.orange, 0), 1)
+plot(prev_day_low, "Prev Day Low", color.new(color.green,  0), 1, plot.style_linebr)
+
+bgcolor(london_kz  ? color.new(color.blue,  92) : na, title="London")
+bgcolor(us_session ? color.new(color.green, 92) : na, title="US Session")
+bgcolor(news_day   ? color.new(color.red,   85) : na, title="News Day")
+
+plotshape(vwap_bounce,  "VWAP",  shape.triangleup, location.belowbar, color.lime,   size=size.small)
+plotshape(institutional,"INST",  shape.triangleup, location.belowbar, color.yellow, size=size.normal)
+plotshape(ema_signal,   "EMA",   shape.triangleup, location.belowbar, color.aqua,   size=size.small)
