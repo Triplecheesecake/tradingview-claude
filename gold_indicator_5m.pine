@@ -1,0 +1,97 @@
+//@version=6
+indicator("MGC Gold - 5min Alerts v1", overlay=true, max_bars_back=500)
+
+// === INDICATORS ===
+vwap    = ta.vwap(hlc3)
+ema9    = ta.ema(close, 9)
+ema21   = ta.ema(close, 21)
+ema50   = ta.ema(close, 50)
+rsi     = ta.rsi(close, 14)
+atr     = ta.atr(14)
+atr_avg = ta.sma(atr, 50)
+avg_vol = ta.sma(volume, 20)
+
+// === DAILY TREND (gold must be above daily EMA 50) ===
+gold_d_close = request.security(syminfo.tickerid, "D", close)
+gold_d_ema50 = request.security(syminfo.tickerid, "D", ta.ema(close, 50))
+gold_uptrend = gold_d_close > gold_d_ema50
+
+// === DAILY LEVELS ===
+prev_day_low = request.security(syminfo.tickerid, "D", low[1])
+
+// === SESSIONS ===
+london_kz    = not na(time("5", "0200-0900", "America/New_York"))
+us_session   = not na(time("5", "0930-1330", "America/New_York"))
+in_session   = london_kz or us_session
+no_wednesday = dayofweek != dayofweek.wednesday
+news_day     = atr > atr_avg * 2.5
+
+// === SHARED CONDITIONS ===
+ema_uptrend = ema9 > ema21 and ema21 > ema50
+above_vwap  = close > vwap
+
+// === SIGNAL 1: VWAP BOUNCE ===
+// Price dips to or below VWAP then closes back above — simplified from 15m W-formation
+vwap_touched  = low[1] <= vwap[1]
+reclaim_above = close > vwap
+
+vwap_bounce = vwap_touched
+  and reclaim_above
+  and ema_uptrend
+  and gold_uptrend
+  and rsi > 45 and rsi < 74
+  and volume > avg_vol * 1.0
+  and us_session
+  and not news_day
+  and no_wednesday
+
+// === SIGNAL 2: INSTITUTIONAL SWEEP (London/Asia) ===
+// PDL swept then reclaimed above VWAP with momentum
+pdl_swept     = low < prev_day_low or low[1] < prev_day_low
+pdl_reclaimed = close > prev_day_low and close > vwap
+strong_bar    = (close - open) > (high - low) * 0.4
+
+institutional = pdl_swept
+  and pdl_reclaimed
+  and strong_bar
+  and ema_uptrend
+  and gold_uptrend
+  and rsi > 40 and rsi < 75
+  and volume > avg_vol * 1.0
+  and london_kz
+  and not news_day
+  and no_wednesday
+
+// === SIGNAL 3: EMA CROSS ABOVE VWAP ===
+// EMA 9 crosses above EMA 21 while price is above VWAP — momentum entry
+ema_cross = ta.crossover(ema9, ema21)
+
+ema_signal = ema_cross
+  and above_vwap
+  and gold_uptrend
+  and rsi > 45 and rsi < 72
+  and volume > avg_vol * 1.0
+  and in_session
+  and not news_day
+  and no_wednesday
+
+// === PLOTS ===
+plot(vwap,        "VWAP",         color.new(color.purple, 0), 2)
+plot(ema9,        "EMA 9",        color.new(color.aqua,   0), 1)
+plot(ema21,       "EMA 21",       color.new(color.yellow, 0), 1)
+plot(ema50,       "EMA 50",       color.new(color.orange, 0), 1)
+plot(prev_day_low,"Prev Day Low", color.new(color.green,  0), 1, plot.style_linebr)
+
+bgcolor(london_kz  ? color.new(color.blue,  92) : na, title="London")
+bgcolor(us_session ? color.new(color.green, 92) : na, title="US Session")
+bgcolor(news_day   ? color.new(color.red,   85) : na, title="News Day")
+
+plotshape(vwap_bounce,  "VWAP BOUNCE",   shape.triangleup, location.belowbar, color.lime,   size=size.small)
+plotshape(institutional,"INSTITUTIONAL", shape.triangleup, location.belowbar, color.yellow, size=size.normal)
+plotshape(ema_signal,   "EMA CROSS",     shape.triangleup, location.belowbar, color.aqua,   size=size.small)
+
+// === ALERTS ===
+alertcondition(vwap_bounce,   "Gold 5m - VWAP Bounce",       '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"LONG - Gold 5m VWAP bounce"}')
+alertcondition(institutional, "Gold 5m - Institutional",     '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"LONG - Gold 5m institutional PDL sweep"}')
+alertcondition(ema_signal,    "Gold 5m - EMA Cross",         '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"LONG - Gold 5m EMA 9/21 cross above VWAP"}')
+alertcondition(vwap_bounce or institutional or ema_signal, "Gold 5m - Any Signal", '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"LONG - Gold 5m signal"}')
