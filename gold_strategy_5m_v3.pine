@@ -1,0 +1,93 @@
+//@version=6
+strategy("MGC Gold - 5min v3 W-Formation", overlay=true, max_bars_back=500, initial_capital=50000, currency=currency.USD, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=1.50)
+
+// === EMAs (5, 13, 50 — Traders Reality stack) ===
+ema5  = ta.ema(close, 5)
+ema13 = ta.ema(close, 13)
+ema50 = ta.ema(close, 50)
+vwap  = ta.vwap(hlc3)
+rsi   = ta.rsi(close, 14)
+atr   = ta.atr(14)
+atr_avg = ta.sma(atr, 50)
+avg_vol = ta.sma(volume, 20)
+
+// === DAILY TREND ===
+gold_d_close = request.security(syminfo.tickerid, "D", close)
+gold_d_ema50 = request.security(syminfo.tickerid, "D", ta.ema(close, 50))
+gold_uptrend = gold_d_close > gold_d_ema50
+
+// === W FORMATION DETECTION ===
+// Uses pivot swing lows — 3 bars left, 2 bars right (10 min confirmation)
+pivot_l = ta.pivotlow(low,  3, 2)
+pivot_h = ta.pivothigh(high, 3, 2)
+
+var float sl1 = na  // most recent swing low
+var float sl2 = na  // previous swing low
+var float mid = na  // peak between the two lows
+
+if not na(pivot_l)
+    sl2 := sl1
+    sl1 := pivot_l
+
+if not na(pivot_h)
+    mid := pivot_h
+
+// W valid: two swing lows where the second (sl1) is HIGHER than the first (sl2)
+// This is the defining feature — a higher low forming the right side of the W
+w_valid = not na(sl1) and not na(sl2) and not na(mid)
+  and sl1 > sl2           // higher low = right side of W
+  and mid > sl2           // mid peak exists above both lows
+  and close > mid         // price breaking above the mid peak = W confirmed
+
+// === EMA CONFIRMATION ===
+// Both 5 and 13 EMAs crossed above 50 EMA — the crossover the user described
+ema_bullish = ema5 > ema50 and ema13 > ema50 and ema5 > ema13
+
+// Candles holding above: price above all EMAs and VWAP
+holding_above = close > ema5 and close > ema13 and close > ema50 and close > vwap
+
+// === VOLUME PRESSURE ===
+// Volume above average AND increasing — institutional buying
+vol_pressure = volume > avg_vol * 1.2 and volume > volume[1]
+
+// === SESSIONS & FILTERS ===
+london       = not na(time("5", "0200-0900", "America/New_York"))
+us           = not na(time("5", "0930-1330", "America/New_York"))
+in_session   = london or us
+no_wednesday = dayofweek != dayofweek.wednesday
+news_day     = atr > atr_avg * 2.5
+
+// === ENTRY: all conditions aligned ===
+long_signal = w_valid
+  and ema_bullish
+  and holding_above
+  and gold_uptrend
+  and vol_pressure
+  and rsi > 45 and rsi < 74
+  and in_session
+  and not news_day
+  and no_wednesday
+  and strategy.position_size == 0
+
+// === EXIT: stop below second low of W (natural support), 3:1 target ===
+if long_signal
+    sl = sl1 - atr * 0.5
+    tp = close + (close - sl) * 3.0
+    strategy.entry("W-Long", strategy.long)
+    strategy.exit("Exit", "W-Long", stop=sl, limit=tp)
+
+// === PLOTS ===
+plot(ema5,  "EMA 5",  color.new(color.white,  0), 1)
+plot(ema13, "EMA 13", color.new(color.red,    0), 1)
+plot(ema50, "EMA 50", color.new(color.yellow, 0), 2)
+plot(vwap,  "VWAP",   color.new(color.purple, 0), 2)
+
+// Mark the W formation lows and mid peak
+plotchar(not na(pivot_l), "Swing Low",  "•", location.belowbar, color.aqua,  size=size.tiny)
+plotchar(not na(pivot_h), "Swing High", "•", location.abovebar, color.orange, size=size.tiny)
+
+bgcolor(london   ? color.new(color.blue,  92) : na, title="London")
+bgcolor(us       ? color.new(color.green, 92) : na, title="US Session")
+bgcolor(news_day ? color.new(color.red,   85) : na, title="News Day")
+
+plotshape(long_signal, "W LONG", shape.triangleup, location.belowbar, color.lime, size=size.normal)
