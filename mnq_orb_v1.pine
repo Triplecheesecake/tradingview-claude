@@ -1,0 +1,65 @@
+//@version=6
+strategy("MNQ - Opening Range Breakout v1", overlay=true, max_bars_back=500, initial_capital=50000, currency=currency.USD, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=0.62)
+
+// === OPENING RANGE (9:30 - 9:45 AM ET, first 3 candles on 5-min) ===
+session_open = not na(time("5", "0930-0945", "America/New_York"))
+after_open   = not na(time("5", "0945-1600", "America/New_York"))
+new_day      = ta.change(dayofmonth)
+
+var float orb_high = na
+var float orb_low  = na
+var bool  traded   = false
+
+// Reset each day
+if new_day
+    orb_high := na
+    orb_low  := na
+    traded   := false
+
+// Build the opening range during 9:30-9:45
+if session_open
+    orb_high := na(orb_high) ? high : math.max(orb_high, high)
+    orb_low  := na(orb_low)  ? low  : math.min(orb_low,  low)
+
+// === FILTERS ===
+atr         = ta.atr(14)
+atr_avg     = ta.sma(atr, 50)
+news_day    = atr > atr_avg * 2.5
+no_wednesday = dayofweek != dayofweek.wednesday
+
+// === BREAKOUT SIGNALS (first signal per day only) ===
+orb_ready    = not na(orb_high) and not na(orb_low) and after_open
+range_size   = orb_high - orb_low
+
+long_signal  = orb_ready and not traded and close > orb_high and close[1] <= orb_high and not news_day and no_wednesday and strategy.position_size == 0
+short_signal = orb_ready and not traded and close < orb_low  and close[1] >= orb_low  and not news_day and no_wednesday and strategy.position_size == 0
+
+// === ENTRIES (stop = other side of range, target = 2x range) ===
+if long_signal
+    traded     := true
+    stop_price  = orb_low
+    tp_price    = close + range_size * 2.0
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Long Exit", "Long", stop=stop_price, limit=tp_price)
+
+if short_signal
+    traded     := true
+    stop_price  = orb_high
+    tp_price    = close - range_size * 2.0
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Short Exit", "Short", stop=stop_price, limit=tp_price)
+
+// === CLOSE ANY OPEN POSITION AT 3:55 PM (avoid overnight) ===
+eod = not na(time("5", "1555-1600", "America/New_York"))
+if eod
+    strategy.close_all()
+
+// === PLOTS ===
+plot(orb_high, "ORB High", color.new(color.lime,   0), 1, plot.style_linebr)
+plot(orb_low,  "ORB Low",  color.new(color.red,    0), 1, plot.style_linebr)
+
+bgcolor(session_open ? color.new(color.yellow, 88) : na, title="Opening Range")
+bgcolor(news_day     ? color.new(color.red,    85) : na, title="News Day")
+
+plotshape(long_signal,  "LONG",  shape.triangleup,   location.belowbar, color.lime, size=size.small)
+plotshape(short_signal, "SHORT", shape.triangledown,  location.abovebar, color.red,  size=size.small)
