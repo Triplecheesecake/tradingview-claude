@@ -1,7 +1,7 @@
 //@version=6
-strategy("MGC Gold - 5min v3 W-Formation", overlay=true, max_bars_back=500, initial_capital=50000, currency=currency.USD, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=1.50)
+strategy("MGC Gold - 5min v3 W/M Formation", overlay=true, max_bars_back=500, initial_capital=50000, currency=currency.USD, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=1.50)
 
-// === EMAs (5, 13, 50 — Traders Reality stack) ===
+// === EMAs ===
 ema5  = ta.ema(close, 5)
 ema13 = ta.ema(close, 13)
 ema50 = ta.ema(close, 50)
@@ -11,43 +11,60 @@ atr   = ta.atr(14)
 atr_avg = ta.sma(atr, 50)
 avg_vol = ta.sma(volume, 20)
 
-// === DAILY TREND ===
+// === DAILY TREND (regime decider) ===
 gold_d_close = request.security(syminfo.tickerid, "D", close)
 gold_d_ema50 = request.security(syminfo.tickerid, "D", ta.ema(close, 50))
-gold_uptrend = gold_d_close > gold_d_ema50
 
-// === W FORMATION DETECTION ===
-// Uses pivot swing lows — 3 bars left, 2 bars right (10 min confirmation)
+// === REGIME FILTER ===
+// Bull: daily gold above EMA50 + 5-min EMA stack bullish → W longs ONLY
+// Bear: daily gold below EMA50 + 5-min EMA stack bearish → M shorts ONLY
+// Prevents conflicting signals — you will never get both at once
+bull_regime = gold_d_close > gold_d_ema50 and ema5 > ema13 and ema13 > ema50
+bear_regime = gold_d_close < gold_d_ema50 and ema5 < ema13 and ema13 < ema50
+
+// === PIVOT DETECTION (shared) ===
 pivot_l = ta.pivotlow(low,  3, 2)
 pivot_h = ta.pivothigh(high, 3, 2)
 
-var float sl1 = na  // most recent swing low
-var float sl2 = na  // previous swing low
-var float mid = na  // peak between the two lows
+// === W FORMATION (longs) ===
+// Two swing lows — second higher than first — break above mid peak
+var float w_sl1 = na
+var float w_sl2 = na
+var float w_mid = na
 
 if not na(pivot_l)
-    sl2 := sl1
-    sl1 := pivot_l
+    w_sl2 := w_sl1
+    w_sl1 := pivot_l
 
 if not na(pivot_h)
-    mid := pivot_h
+    w_mid := pivot_h
 
-// W valid: two swing lows where the second (sl1) is HIGHER than the first (sl2)
-// This is the defining feature — a higher low forming the right side of the W
-w_valid = not na(sl1) and not na(sl2) and not na(mid)
-  and sl1 > sl2           // higher low = right side of W
-  and mid > sl2           // mid peak exists above both lows
-  and close > mid         // price breaking above the mid peak = W confirmed
+w_valid = not na(w_sl1) and not na(w_sl2) and not na(w_mid)
+  and w_sl1 > w_sl2       // higher low = W shape
+  and w_mid > w_sl2       // mid peak exists
+  and close > w_mid       // price breaks above mid peak = W confirmed
+  and close > vwap
 
-// === EMA CONFIRMATION ===
-// Both 5 and 13 EMAs crossed above 50 EMA — the crossover the user described
-ema_bullish = ema5 > ema50 and ema13 > ema50 and ema5 > ema13
+// === M FORMATION (shorts) ===
+// Two swing highs — second lower than first — break below mid valley
+var float m_sh1 = na
+var float m_sh2 = na
+var float m_mid = na
 
-// Candles holding above: price above all EMAs and VWAP
-holding_above = close > ema5 and close > ema13 and close > ema50 and close > vwap
+if not na(pivot_h)
+    m_sh2 := m_sh1
+    m_sh1 := pivot_h
+
+if not na(pivot_l)
+    m_mid := pivot_l
+
+m_valid = not na(m_sh1) and not na(m_sh2) and not na(m_mid)
+  and m_sh1 < m_sh2       // lower high = M shape
+  and m_mid < m_sh2       // mid valley exists
+  and close < m_mid       // price breaks below mid valley = M confirmed
+  and close < vwap
 
 // === VOLUME PRESSURE ===
-// Volume above average AND increasing — institutional buying
 vol_pressure = volume > avg_vol * 1.2 and volume > volume[1]
 
 // === SESSIONS & FILTERS ===
@@ -56,25 +73,25 @@ us           = not na(time("5", "0930-1330", "America/New_York"))
 in_session   = london or us
 no_wednesday = dayofweek != dayofweek.wednesday
 news_day     = atr > atr_avg * 2.5
+no_position  = strategy.position_size == 0
 
-// === ENTRY: all conditions aligned ===
-long_signal = w_valid
-  and ema_bullish
-  and holding_above
-  and gold_uptrend
-  and vol_pressure
-  and rsi > 45 and rsi < 74
-  and in_session
-  and not news_day
-  and no_wednesday
-  and strategy.position_size == 0
+// === SIGNALS ===
+// W long only fires in bull regime — M short only fires in bear regime
+long_signal  = w_valid and bull_regime and vol_pressure and rsi > 45 and rsi < 74 and in_session and not news_day and no_wednesday and no_position
+short_signal = m_valid and bear_regime and vol_pressure and rsi > 26 and rsi < 55 and in_session and not news_day and no_wednesday and no_position
 
-// === EXIT: stop below second low of W (natural support), 3:1 target ===
+// === ENTRIES & EXITS ===
 if long_signal
-    sl = sl1 - atr * 0.5
+    sl = w_sl1 - atr * 0.5
     tp = close + (close - sl) * 3.0
     strategy.entry("W-Long", strategy.long)
-    strategy.exit("Exit", "W-Long", stop=sl, limit=tp)
+    strategy.exit("WL-Exit", "W-Long", stop=sl, limit=tp)
+
+if short_signal
+    sl = m_sh1 + atr * 0.5
+    tp = close - (sl - close) * 3.0
+    strategy.entry("M-Short", strategy.short)
+    strategy.exit("MS-Exit", "M-Short", stop=sl, limit=tp)
 
 // === PLOTS ===
 plot(ema5,  "EMA 5",  color.new(color.white,  0), 1)
@@ -82,12 +99,14 @@ plot(ema13, "EMA 13", color.new(color.red,    0), 1)
 plot(ema50, "EMA 50", color.new(color.yellow, 0), 2)
 plot(vwap,  "VWAP",   color.new(color.purple, 0), 2)
 
-// Mark the W formation lows and mid peak
-plotchar(not na(pivot_l), "Swing Low",  "•", location.belowbar, color.aqua,  size=size.tiny)
-plotchar(not na(pivot_h), "Swing High", "•", location.abovebar, color.orange, size=size.tiny)
+// Regime background — tells you at a glance which mode you're in
+bgcolor(bull_regime  ? color.new(color.green, 95) : na, title="Bull Regime (W longs only)")
+bgcolor(bear_regime  ? color.new(color.red,   95) : na, title="Bear Regime (M shorts only)")
+bgcolor(london       ? color.new(color.blue,  92) : na, title="London")
+bgcolor(news_day     ? color.new(color.red,   85) : na, title="News Day")
 
-bgcolor(london   ? color.new(color.blue,  92) : na, title="London")
-bgcolor(us       ? color.new(color.green, 92) : na, title="US Session")
-bgcolor(news_day ? color.new(color.red,   85) : na, title="News Day")
+plotchar(not na(pivot_l), "Swing Low",  "•", location.belowbar, color.aqua,   size=size.tiny)
+plotchar(not na(pivot_h), "Swing High", "•", location.abovebar, color.orange,  size=size.tiny)
 
-plotshape(long_signal, "W LONG", shape.triangleup, location.belowbar, color.lime, size=size.normal)
+plotshape(long_signal,  "W LONG",  shape.triangleup,   location.belowbar, color.lime, size=size.normal)
+plotshape(short_signal, "M SHORT", shape.triangledown,  location.abovebar, color.red,  size=size.normal)
