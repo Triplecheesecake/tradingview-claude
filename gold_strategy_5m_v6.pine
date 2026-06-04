@@ -22,8 +22,9 @@ bear_regime = gold_d_close < gold_d_ema50 and ema5 < ema13 and ema13 < ema50
 // === SESSIONS ===
 asia         = not na(time("5", "1800-2359", "America/New_York"))
 london_early = not na(time("5", "0000-0200", "America/New_York"))
+us_open      = not na(time("5", "0930-1100", "America/New_York"))  // added back: +$10.43/trade in analysis
 us_midday    = not na(time("5", "1100-1330", "America/New_York"))
-in_session   = asia or london_early or us_midday
+in_session   = asia or london_early or us_open or us_midday
 
 // === FILTERS ===
 no_thursday  = dayofweek != dayofweek.thursday
