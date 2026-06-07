@@ -125,13 +125,10 @@ plotshape(london_close_long,  "LC",   shape.triangleup, location.belowbar, color
 
 // === ALERTS ===
 alertcondition(institutional_long, "Gold 15m - INSTITUTIONAL",
- '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"LONG - Gold institutional PDL sweep London/Asia"}')
+ '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"[15m] LONG - Gold institutional PDL sweep London/Asia"}')
 
 alertcondition(vwap_long, "Gold 15m - VWAP PULLBACK",
- '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"LONG - Gold VWAP pullback W formation US session"}')
+ '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"[15m] LONG - Gold VWAP pullback W formation US session"}')
 
 alertcondition(london_close_long, "Gold 15m - LONDON CLOSE",
- '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"LONG - Gold London close EMA demand"}')
-
-alertcondition(institutional_long or vwap_long or london_close_long, "Gold 15m - Any Signal",
- '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"LONG - Gold 15m signal"}')
+ '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"[15m] LONG - Gold London close EMA demand"}')

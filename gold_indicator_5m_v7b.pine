@@ -96,6 +96,6 @@ plot(short_sl, "Short SL", short_signal ? color.new(color.red,  0) : na, 1, plot
 plot(short_tp, "Short TP", short_signal ? color.new(color.lime, 0) : na, 1, plot.style_linebr)
 
 // === ALERTS ===
-alertcondition(long_signal,  "Gold 5m v7b - W LONG",  '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"LONG - Gold 5m W formation"}')
-alertcondition(short_signal, "Gold 5m v7b - M SHORT", '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"SHORT - Gold 5m M formation"}')
-alertcondition(long_signal or short_signal, "Gold 5m v7b - Any Signal", '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"Gold 5m v7b signal - check chart for direction"}')
+alertcondition(long_signal,  "Gold 5m v7b - W LONG",  '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"[5m] LONG - Gold W formation"}')
+alertcondition(short_signal, "Gold 5m v7b - M SHORT", '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"[5m] SHORT - Gold M formation"}')
+alertcondition(long_signal or short_signal, "Gold 5m v7b - Any Signal", '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"[5m] Gold signal - check chart for direction"}')
