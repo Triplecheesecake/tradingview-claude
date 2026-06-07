@@ -1,0 +1,124 @@
+//@version=6
+strategy("MGC Gold - 15min v9 S/D + Candles", overlay=true, max_bars_back=500, initial_capital=50000, currency=currency.USD, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=1.50)
+
+// === EMAs (9/21 as requested — faster, more responsive) ===
+ema9    = ta.ema(close, 9)
+ema21   = ta.ema(close, 21)
+ema50   = ta.ema(close, 50)
+vwap    = ta.vwap(hlc3)
+atr     = ta.atr(14)
+atr_avg = ta.sma(atr, 50)
+avg_vol = ta.sma(volume, 20)
+rsi     = ta.rsi(close, 14)
+
+// === DAILY BIAS (minimal trend requirement — just needs gold above daily EMA50) ===
+gold_d_close = request.security(syminfo.tickerid, "D", close)
+gold_d_ema50 = request.security(syminfo.tickerid, "D", ta.ema(close, 50))
+bull_bias    = gold_d_close > gold_d_ema50
+bear_bias    = gold_d_close < gold_d_ema50
+
+// === CANDLESTICK PATTERNS ===
+body       = math.abs(close - open)
+lower_wick = math.min(open, close) - low
+upper_wick = high - math.max(open, close)
+range_     = high - low
+
+// Hammer: long lower wick, small body, rejection of lows
+hammer = lower_wick > body * 2.0 and upper_wick < body and close > open and range_ > 0
+
+// Bullish engulfing: current green candle body engulfs previous red candle
+bull_engulf = close > open and close[1] < open[1] and close >= open[1] and open <= close[1]
+
+// Pin bar: dominant lower wick rejection (works regardless of body direction)
+pin_bar_bull = lower_wick > range_ * 0.55 and body < range_ * 0.35
+
+// Morning star: bearish candle, small candle, bullish candle
+morning_star = close[2] < open[2] and body[1] < body[2] * 0.4 and close > open and close > (open[2] + close[2]) / 2
+
+bullish_candle = hammer or bull_engulf or pin_bar_bull or morning_star
+
+// Bearish patterns (for shorts)
+bear_engulf   = close < open and close[1] > open[1] and close <= open[1] and open >= close[1]
+pin_bar_bear  = upper_wick > range_ * 0.55 and body < range_ * 0.35
+shooting_star = upper_wick > body * 2.0 and lower_wick < body and close < open
+
+bearish_candle = bear_engulf or pin_bar_bear or shooting_star
+
+// === SUPPLY & DEMAND ZONES ===
+// Demand: price pulled back to 9 EMA or 21 EMA from above (key support levels)
+// These are dynamic S/D levels that institutions respect
+at_ema9  = low[1] <= ema9[1]  and close > ema9   // touched 9 EMA, reclaimed
+at_ema21 = low[1] <= ema21[1] and close > ema21   // touched 21 EMA, reclaimed
+at_vwap  = low[1] <= vwap[1]  and close > vwap    // touched VWAP, reclaimed
+
+// Supply: price rallied to 9/21 EMA from below (key resistance)
+at_ema9_res  = high[1] >= ema9[1]  and close < ema9
+at_ema21_res = high[1] >= ema21[1] and close < ema21
+at_vwap_res  = high[1] >= vwap[1]  and close < vwap
+
+// Demand zone = price at one of these key levels
+at_demand = at_ema9 or at_ema21 or at_vwap
+at_supply = at_ema9_res or at_ema21_res or at_vwap_res
+
+// === SESSIONS ===
+london       = not na(time("15", "0200-0900", "America/New_York"))
+asia         = not na(time("15", "2000-0200", "America/New_York"))
+us_session   = not na(time("15", "0930-1330", "America/New_York"))
+in_session   = london or asia or us_session
+no_wednesday = dayofweek != dayofweek.wednesday
+news_day     = atr > atr_avg * 2.5
+
+// === SIGNALS ===
+// Long: bullish candle at demand zone, gold in bull bias
+long_signal = bullish_candle
+  and at_demand
+  and bull_bias
+  and rsi > 35 and rsi < 75
+  and volume > avg_vol * 1.0
+  and in_session
+  and not news_day
+  and no_wednesday
+  and strategy.position_size == 0
+
+// Short: bearish candle at supply zone, gold in bear bias
+short_signal = bearish_candle
+  and at_supply
+  and bear_bias
+  and rsi > 25 and rsi < 65
+  and volume > avg_vol * 1.0
+  and in_session
+  and not news_day
+  and no_wednesday
+  and strategy.position_size == 0
+
+// === ENTRIES & EXITS ===
+if long_signal
+    sl = low - atr * 0.5
+    tp = close + (close - sl) * 3.0
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Long X", "Long", stop=sl, limit=tp)
+
+if short_signal
+    sl = high + atr * 0.5
+    tp = close - (sl - close) * 3.0
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Short X", "Short", stop=sl, limit=tp)
+
+// === PLOTS ===
+plot(ema9,  "EMA 9",  color.new(color.aqua,   0), 1)
+plot(ema21, "EMA 21", color.new(color.yellow, 0), 2)
+plot(ema50, "EMA 50", color.new(color.orange, 0), 1)
+plot(vwap,  "VWAP",   color.new(color.purple, 0), 2)
+
+bgcolor(london     ? color.new(color.blue,  92) : na, title="London")
+bgcolor(asia       ? color.new(color.purple,92) : na, title="Asia")
+bgcolor(us_session ? color.new(color.green, 92) : na, title="US Session")
+bgcolor(news_day   ? color.new(color.red,   85) : na, title="News Day")
+
+plotshape(long_signal,  "LONG",  shape.triangleup,   location.belowbar, color.lime, size=size.normal)
+plotshape(short_signal, "SHORT", shape.triangledown,  location.abovebar, color.red,  size=size.normal)
+
+// Mark candle patterns
+plotchar(hammer,      "Hammer",    "H", location.belowbar, color.lime,   size=size.tiny)
+plotchar(bull_engulf, "Engulf",    "E", location.belowbar, color.aqua,   size=size.tiny)
+plotchar(pin_bar_bull,"Pin",       "P", location.belowbar, color.yellow, size=size.tiny)
