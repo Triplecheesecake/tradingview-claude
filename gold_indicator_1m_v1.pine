@@ -1,0 +1,62 @@
+//@version=6
+indicator("MGC Gold - 1min v1", overlay=true, max_bars_back=500)
+
+// === INDICATORS ===
+ema9    = ta.ema(close, 9)
+ema21   = ta.ema(close, 21)
+ema50   = ta.ema(close, 50)
+vwap    = ta.vwap(hlc3)
+rsi     = ta.rsi(close, 14)
+atr     = ta.atr(14)
+atr_avg = ta.sma(atr, 50)
+avg_vol = ta.sma(volume, 20)
+
+// === DAILY TREND ===
+gold_d_close = request.security(syminfo.tickerid, "D", close)
+gold_d_ema50 = request.security(syminfo.tickerid, "D", ta.ema(close, 50))
+bull_bias    = gold_d_close > gold_d_ema50
+bear_bias    = gold_d_close < gold_d_ema50
+
+// === 5-MIN TREND CONFIRMATION ===
+ema9_5m  = request.security(syminfo.tickerid, "5", ta.ema(close, 9))
+ema21_5m = request.security(syminfo.tickerid, "5", ta.ema(close, 21))
+bull_5m  = ema9_5m > ema21_5m
+bear_5m  = ema9_5m < ema21_5m
+
+// === SESSIONS ===
+london     = not na(time("1", "0200-0900", "America/New_York"))
+us_open    = not na(time("1", "0930-1130", "America/New_York"))
+in_session = london or us_open
+no_wednesday = dayofweek != dayofweek.wednesday
+news_day     = atr > atr_avg * 2.5
+
+// === SIGNALS ===
+ema9_bounce_long  = low[1] <= ema9[1] and close > ema9 and close > vwap and ema9 > ema21
+ema9_bounce_short = high[1] >= ema9[1] and close < ema9 and close < vwap and ema9 < ema21
+
+long_signal  = ema9_bounce_long  and bull_bias and bull_5m and rsi > 40 and rsi < 74 and volume > avg_vol * 1.0 and in_session and not news_day and no_wednesday
+short_signal = ema9_bounce_short and bear_bias and bear_5m and rsi > 26 and rsi < 60 and volume > avg_vol * 1.0 and in_session and not news_day and no_wednesday
+
+// === SL FOR DISPLAY ===
+long_sl  = long_signal  ? low  - atr * 1.0 : na
+short_sl = short_signal ? high + atr * 1.0 : na
+
+// === PLOTS ===
+plot(ema9,  "EMA 9",  color.new(color.aqua,   0), 1)
+plot(ema21, "EMA 21", color.new(color.yellow, 0), 1)
+plot(ema50, "EMA 50", color.new(color.orange, 0), 1)
+plot(vwap,  "VWAP",   color.new(color.purple, 0), 2)
+
+bgcolor(london   ? color.new(color.blue,  92) : na, title="London")
+bgcolor(us_open  ? color.new(color.green, 92) : na, title="US Open")
+bgcolor(news_day ? color.new(color.red,   85) : na, title="News Day")
+
+plot(long_sl,  "Long SL",  long_signal  ? color.new(color.red, 0) : na, 1, plot.style_linebr)
+plot(short_sl, "Short SL", short_signal ? color.new(color.red, 0) : na, 1, plot.style_linebr)
+
+plotshape(long_signal,  "LONG",  shape.triangleup,   location.belowbar, color.lime, size=size.small)
+plotshape(short_signal, "SHORT", shape.triangledown,  location.abovebar, color.red,  size=size.small)
+
+// === ALERTS ===
+alertcondition(long_signal,  "Gold 1m - LONG",  '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"[1m] LONG - Gold EMA 9 bounce above VWAP"}')
+alertcondition(short_signal, "Gold 1m - SHORT", '{"symbol":"{{ticker}}","price":"{{close}}","high":"{{high}}","low":"{{low}}","volume":"{{volume}}","time":"{{time}}","interval":"{{interval}}","condition":"[1m] SHORT - Gold EMA 9 rejection below VWAP"}')
