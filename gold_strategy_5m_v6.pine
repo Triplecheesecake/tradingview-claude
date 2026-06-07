@@ -16,8 +16,8 @@ gold_d_close = request.security(syminfo.tickerid, "D", close)
 gold_d_ema50 = request.security(syminfo.tickerid, "D", ta.ema(close, 50))
 
 // === REGIME FILTER ===
-bull_regime = gold_d_close > gold_d_ema50 and ema5 > ema13 and ema13 > ema50
-bear_regime = gold_d_close < gold_d_ema50 and ema5 < ema13 and ema13 < ema50
+bull_regime = gold_d_close > gold_d_ema50
+bear_regime = gold_d_close < gold_d_ema50
 
 // === SESSIONS ===
 asia         = not na(time("5", "1800-2359", "America/New_York"))
@@ -71,7 +71,7 @@ m_valid = not na(m_sh1) and not na(m_sh2) and not na(m_mid)
   and close < vwap
 
 // === VOLUME PRESSURE ===
-vol_pressure = volume > avg_vol * 1.2 and volume > volume[1]
+vol_pressure = volume > avg_vol * 1.0
 
 // === BASE FILTERS ===
 base_filters = in_session and not news_day and no_wednesday and no_thursday and no_november and strategy.position_size == 0
