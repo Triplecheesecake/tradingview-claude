@@ -1,61 +1,133 @@
 //@version=6
-strategy("MGC Gold - EMA Crossover v7", overlay=true, max_bars_back=500, initial_capital=50000, currency=currency.USD, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=1.50)
+strategy("MGC Gold - 15min v7", overlay=true, max_bars_back=500, initial_capital=50000, currency=currency.USD, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=1.50)
 
 // === INDICATORS ===
 vwap    = ta.vwap(hlc3)
-ema9    = ta.ema(close, 9)
-ema21   = ta.ema(close, 21)
+ema20   = ta.ema(close, 20)
 ema50   = ta.ema(close, 50)
 ema200  = ta.ema(close, 200)
-rsi     = ta.rsi(close, 14)
 atr     = ta.atr(14)
 atr_avg = ta.sma(atr, 50)
 avg_vol = ta.sma(volume, 20)
+rsi     = ta.rsi(close, 14)
 
-// === TREND FILTERS ===
+// === DAILY TREND ===
 gold_d_close = request.security(syminfo.tickerid, "D", close)
 gold_d_ema50 = request.security(syminfo.tickerid, "D", ta.ema(close, 50))
 gold_uptrend = gold_d_close > gold_d_ema50
 
+// === VOLATILITY FILTERS ===
+news_day  = atr > atr_avg * 2.5
+// Minimum volatility: price needs momentum to reach 3:1 target
+// Low vol = choppy = stop-outs. Only trade when market has energy.
+min_vol   = atr > atr_avg * 0.7
+
 // === SESSIONS ===
-london_kz    = not na(time("15", "0200-0900", "America/New_York"))
-us_session   = not na(time("15", "0930-1330", "America/New_York"))
-in_session   = london_kz or us_session
+overnight_kz = not na(time("15", "0200-0900", "America/New_York"))
+asia_kz      = not na(time("15", "2000-0200", "America/New_York"))
+// VWAP window tightened to 9:30-10:00 AM only (10-11 AM loses money)
+us_open      = not na(time("15", "0930-1000", "America/New_York"))
+in_kz        = overnight_kz or asia_kz
 no_wednesday = dayofweek != dayofweek.wednesday
-news_day     = atr > atr_avg * 2.5
 
-// === SIGNAL: EMA 9/21 CROSSOVER ABOVE VWAP ===
-cross_up    = ta.crossover(ema9, ema21)
-above_vwap  = close > vwap
-ema_uptrend = ema21 > ema50
+// === LEVELS ===
+prev_day_low  = request.security(syminfo.tickerid, "D", low[1])
+gold_d_ema50d = request.security(syminfo.tickerid, "D", ta.ema(close, 50))
 
-long_signal = cross_up
-  and above_vwap
-  and ema_uptrend
+// === SIGNAL 1: INSTITUTIONAL (London/Asia) ===
+// Unchanged — already working well ($9,871 net, $128/trade avg)
+pdl_swept     = low < prev_day_low or low[1] < prev_day_low
+pdl_reclaimed = close > prev_day_low
+momentum_up   = close > close[1]
+strong_bar    = (close - open) > (high - low) * 0.4
+
+institutional_long = pdl_swept
+  and pdl_reclaimed
+  and close > vwap
+  and volume > avg_vol * 1.0
+  and rsi > 40 and rsi < 75
+  and momentum_up
+  and strong_bar
   and gold_uptrend
-  and rsi > 45 and rsi < 72
-  and volume > avg_vol * 1.2
-  and in_session
+  and in_kz
+  and not news_day
+  and no_wednesday
+  and strategy.position_size == 0
+
+// === SIGNAL 2: VWAP PULLBACK (US open only, simplified) ===
+// Removed: strong_bar, momentum_up, uptrend_1h — redundant, killing frequency
+// Tightened session: 9:30-10:00 AM only (high volatility window)
+// Relaxed volume: 1.0x avg (was 1.3x)
+was_above_vwap = close[2] > vwap[2]
+touched_vwap   = low[1] <= vwap[1]
+closing_above  = close > vwap
+higher_low     = low > ta.lowest(low, 10) and low[1] <= vwap[1]
+uptrend_15     = ema20 > ema50 and close > ema200
+
+vwap_long = was_above_vwap
+  and touched_vwap
+  and closing_above
+  and higher_low
+  and uptrend_15
+  and gold_uptrend
+  and rsi > 50 and rsi < 72
+  and volume > avg_vol * 1.0
+  and min_vol
+  and us_open
+  and not news_day
+  and no_wednesday
+  and strategy.position_size == 0
+
+// === SIGNAL 3: OPEN SWEEP (gap down + EMA50 reclaim) ===
+open_window      = not na(time("15", "0900-1030", "America/New_York"))
+gold_ema50_daily = request.security(syminfo.tickerid, "D", ta.ema(close, 50))
+swept_open       = low < prev_day_low or low[1] < prev_day_low
+                   or low < gold_ema50_daily or low[1] < gold_ema50_daily
+reclaimed_open   = close > gold_ema50_daily and close > vwap
+
+open_sweep_long = swept_open
+  and reclaimed_open
+  and strong_bar
+  and momentum_up
+  and volume > avg_vol * 1.5
+  and rsi > 40 and rsi < 70
+  and gold_uptrend
+  and open_window
   and not news_day
   and no_wednesday
   and strategy.position_size == 0
 
 // === ENTRIES & EXITS ===
-if long_signal
-    stop_price = close - atr * 1.0
-    tp_price   = close + (close - stop_price) * 3.0
-    strategy.entry("Long", strategy.long)
-    strategy.exit("Exit", "Long", stop=stop_price, limit=tp_price)
+if institutional_long
+    sl = math.min(low, low[1]) - atr * 0.5
+    tp = math.round(close / 100) * 100 + 100
+    strategy.entry("Inst", strategy.long)
+    strategy.exit("Inst X", "Inst", stop=sl, limit=tp)
+
+if vwap_long
+    sl = vwap - atr * 1.0
+    tp = ema50 > close ? ema50 : close + (close - sl) * 3.0
+    strategy.entry("VWAP", strategy.long)
+    strategy.exit("VWAP X", "VWAP", stop=sl, limit=tp)
+
+if open_sweep_long
+    sl = math.min(low, low[1]) - atr * 0.5
+    tp = close + (close - sl) * 3.0
+    strategy.entry("Sweep", strategy.long)
+    strategy.exit("Sweep X", "Sweep", stop=sl, limit=tp)
 
 // === PLOTS ===
-plot(vwap,   "VWAP",    color.new(color.purple, 0), 2)
-plot(ema9,   "EMA 9",   color.new(color.aqua,   0), 1)
-plot(ema21,  "EMA 21",  color.new(color.yellow, 0), 1)
-plot(ema50,  "EMA 50",  color.new(color.orange, 0), 1)
-plot(ema200, "EMA 200", color.new(color.white,  0), 2)
+plot(vwap,         "VWAP",         color.new(color.purple, 0), 2)
+plot(ema20,        "EMA 20",       color.new(color.blue,   0), 1)
+plot(ema50,        "EMA 50",       color.new(color.orange, 0), 1)
+plot(ema200,       "EMA 200",      color.new(color.white,  0), 2)
+plot(prev_day_low, "Prev Day Low", color.new(color.green,  0), 1, plot.style_linebr)
 
-bgcolor(london_kz  ? color.new(color.blue,  92) : na, title="London")
-bgcolor(us_session ? color.new(color.green, 92) : na, title="US Session")
-bgcolor(news_day   ? color.new(color.red,   85) : na, title="News Day")
+bgcolor(overnight_kz ? color.new(color.blue,   92) : na, title="London")
+bgcolor(asia_kz      ? color.new(color.purple,  92) : na, title="Asia")
+bgcolor(us_open      ? color.new(color.green,   92) : na, title="US Open (9:30-10 AM)")
+bgcolor(news_day     ? color.new(color.red,     85) : na, title="News Day")
 
-plotshape(long_signal, "LONG", shape.triangleup, location.belowbar, color.lime, size=size.normal)
+plotshape(institutional_long, "INST",  shape.triangleup, location.belowbar, color.yellow, size=size.large)
+plotshape(vwap_long,          "VWAP",  shape.triangleup, location.belowbar, color.lime,   size=size.normal)
+plotshape(open_sweep_long,    "SWEEP", shape.triangleup, location.belowbar, color.orange, size=size.large)
