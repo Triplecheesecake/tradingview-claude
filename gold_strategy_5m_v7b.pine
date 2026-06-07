@@ -1,0 +1,79 @@
+//@version=6
+// v7b: 4:1 R:R + Thursdays back + November back (max aggression)
+strategy("MGC Gold - 5min v7b (Aggressive)", overlay=true, max_bars_back=500, initial_capital=50000, currency=currency.USD, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=1.50)
+
+ema5  = ta.ema(close, 5)
+ema13 = ta.ema(close, 13)
+ema50 = ta.ema(close, 50)
+vwap  = ta.vwap(hlc3)
+rsi   = ta.rsi(close, 14)
+atr   = ta.atr(14)
+atr_avg = ta.sma(atr, 50)
+avg_vol = ta.sma(volume, 20)
+
+gold_d_close = request.security(syminfo.tickerid, "D", close)
+gold_d_ema50 = request.security(syminfo.tickerid, "D", ta.ema(close, 50))
+bull_regime  = gold_d_close > gold_d_ema50
+bear_regime  = gold_d_close < gold_d_ema50
+
+asia         = not na(time("5", "1800-2359", "America/New_York"))
+london_early = not na(time("5", "0000-0200", "America/New_York"))
+us_open      = not na(time("5", "0930-1100", "America/New_York"))
+us_midday    = not na(time("5", "1100-1330", "America/New_York"))
+in_session   = asia or london_early or us_open or us_midday
+
+// Thursdays and November BACK IN for maximum aggression
+no_wednesday = dayofweek != dayofweek.wednesday
+news_day     = atr > atr_avg * 2.5
+
+pivot_l = ta.pivotlow(low,  3, 2)
+pivot_h = ta.pivothigh(high, 3, 2)
+
+var float w_sl1 = na
+var float w_sl2 = na
+var float w_mid = na
+if not na(pivot_l)
+    w_sl2 := w_sl1
+    w_sl1 := pivot_l
+if not na(pivot_h)
+    w_mid := pivot_h
+
+w_valid = not na(w_sl1) and not na(w_sl2) and not na(w_mid)
+  and w_sl1 > w_sl2 and w_mid > w_sl2 and close > w_mid and close > vwap
+
+var float m_sh1 = na
+var float m_sh2 = na
+var float m_mid = na
+if not na(pivot_h)
+    m_sh2 := m_sh1
+    m_sh1 := pivot_h
+if not na(pivot_l)
+    m_mid := pivot_l
+
+m_valid = not na(m_sh1) and not na(m_sh2) and not na(m_mid)
+  and m_sh1 < m_sh2 and m_mid < m_sh2 and close < m_mid and close < vwap
+
+vol_pressure = volume > avg_vol * 1.0
+base_filters = in_session and not news_day and no_wednesday and strategy.position_size == 0
+
+long_signal  = w_valid and bull_regime and vol_pressure and rsi > 45 and rsi < 74 and base_filters
+short_signal = m_valid and bear_regime and vol_pressure and rsi > 26 and rsi < 55 and base_filters
+
+if long_signal
+    sl = math.max(w_sl1 - atr * 0.5, close - atr * 2.5)
+    tp = close + (close - sl) * 4.0  // 4:1 R:R
+    strategy.entry("W-Long", strategy.long)
+    strategy.exit("WL-X", "W-Long", stop=sl, limit=tp)
+
+if short_signal
+    sl = math.min(m_sh1 + atr * 0.5, close + atr * 2.5)
+    tp = close - (sl - close) * 4.0  // 4:1 R:R
+    strategy.entry("M-Short", strategy.short)
+    strategy.exit("MS-X", "M-Short", stop=sl, limit=tp)
+
+plot(ema5,  "EMA 5",  color.new(color.white,  0), 1)
+plot(ema13, "EMA 13", color.new(color.red,    0), 1)
+plot(ema50, "EMA 50", color.new(color.yellow, 0), 2)
+plot(vwap,  "VWAP",   color.new(color.purple, 0), 2)
+plotshape(long_signal,  "W LONG",  shape.triangleup,   location.belowbar, color.lime, size=size.normal)
+plotshape(short_signal, "M SHORT", shape.triangledown,  location.abovebar, color.red,  size=size.normal)
